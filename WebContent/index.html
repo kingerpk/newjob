@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
+    <title>货场监控</title>
+	<script src="js/jquery.js"></script>
+    <script src="js/OpenLayers-2.12/OpenLayers.js"></script>
+    <script type="text/javascript">
+		
+		var map;
+		var stationLayer;
+		var host="http://localhost:8080/";
+		var clickControl;
+		var addStationValue="a";
+		var bufferLayer;
+		var featureSle;
+		
+		function init(){
+			map = new OpenLayers.Map("map");
+			var baseLayer = new OpenLayers.Layer.WMS(
+								"Global Imagery",
+								host+"geoserver/cite/wms?service=WMS",
+								 {layers: "xianjie"}
+							);
+			bufferLayer=new OpenLayers.Layer.Vector("buffer");
+			stationLayer =new OpenLayers.Layer.Vector("yxcs", {styleMap:mapStyle});
+			
+			var protolcol=new OpenLayers.Protocol.WFS({
+							url:host+"geoserver/cite/ows",
+							featureType: "station",
+							featureNS: "http://www.opengeospatial.net/cite",
+							callback:function(d){
+								stationLayer.addFeatures(d.features);
+							}
+						});
+			protolcol.read();
+			map.addLayers([baseLayer,stationLayer,bufferLayer]);
+			featureSle=new OpenLayers.Control.SelectFeature(
+						stationLayer,
+						{
+							onSelect:function(feature){
+								var areaArg=1000;
+								var centerPoint;
+								areaArg=1/111.11;
+								centerPoint=feature.geometry;
+								var bufferv=prompt( "输入查询半径（单位：千米）："); 
+								var area=new OpenLayers.Geometry.Polygon.createRegularPolygon(feature.geometry,areaArg*bufferv,40,0);
+								var protolcol=new OpenLayers.Protocol.WFS({
+									url:host+"geoserver/cite/ows",
+									featureType: "station",
+									featureNS: "http://www.opengeospatial.net/cite",
+									callback:function(d){
+										stationLayer.removeAllFeatures();
+										stationLayer.addFeatures(d.features);
+									},
+									 filter:new OpenLayers.Filter.Spatial({
+											type:OpenLayers.Filter.Spatial.WITHIN,
+											property:'the_geom',
+											value:area
+										}
+									)
+								})
+								protolcol.read();
+ 								var yuan= new OpenLayers.Feature.Vector(area);
+								bufferLayer.addFeatures([yuan]);
+							}
+						}
+					);
+			clickControl = new OpenLayers.Control.Click();
+            map.addControl(clickControl);
+			map.addControl(featureSle);
+			featureSle.deactivate();
+            clickControl.activate();
+			map.setCenter(new OpenLayers.LonLat(113.62678, 23.44851), 7);
+			
+			$("#cot input[type='checkbox']").click(
+				function(){
+					var id=$(this).attr("id");
+					var check=$(this).attr("checked");
+					styleChoser.e=null;
+					if(id=="A"){
+						styleChoser.a=check?ruleA:null;
+							stationLayer.styleMap.styles.default.rules=styleChoser.getStyle();
+							stationLayer.redraw();
+					}
+					else if(id=="B"){
+							styleChoser.b=check?ruleB:null;
+							stationLayer.styleMap.styles.default.rules=styleChoser.getStyle();
+							stationLayer.redraw();
+					}
+					else if(id=="C"){
+							styleChoser.c=check?ruleC:null;
+							stationLayer.styleMap.styles.default.rules=styleChoser.getStyle();
+							stationLayer.redraw();
+					}
+				}
+			);
+		}
+		
+		
+		
+		OpenLayers.Control.Click = OpenLayers.Class(OpenLayers.Control, {                
+                defaultHandlerOptions: {
+                    'single': true,
+                    'double': false,
+                    'pixelTolerance': 0,
+                    'stopSingle': false,
+                    'stopDouble': false
+                },
+
+                initialize: function(options) {
+                    this.handlerOptions = OpenLayers.Util.extend(
+                        {}, this.defaultHandlerOptions
+                    );
+                    OpenLayers.Control.prototype.initialize.apply(
+                        this, arguments
+                    ); 
+                    this.handler = new OpenLayers.Handler.Click(
+                        this, {
+                            'click': this.trigger
+                        }, this.handlerOptions
+                    );
+                }, 
+
+                trigger: function(e) {
+                    var lonlat = map.getLonLatFromPixel(e.xy);
+					var point=new OpenLayers.Geometry.Point(lonlat.lon,lonlat.lat);
+					
+					var featureT=new OpenLayers.Feature.Vector(point,{type:addStationValue,newadd:true});
+					stationLayer.addFeatures(featureT);
+                }
+
+            });
+			
+			var ruleA=new OpenLayers.Rule({
+						filter: new OpenLayers.Filter.Comparison({
+							type: OpenLayers.Filter.Comparison.EQUAL_TO,
+							property: "type", 
+							value: "a"
+						}),
+						symbolizer: {
+							fillColor: "red"														
+						}
+					});
+			
+			var ruleB=new OpenLayers.Rule({
+						filter: new OpenLayers.Filter.Comparison({
+							type: OpenLayers.Filter.Comparison.EQUAL_TO,
+							property: "type",
+							value: "b"
+						}),
+						symbolizer: {
+							fillColor: "yellow"
+						}
+					});
+			
+			var ruleC=new OpenLayers.Rule({
+						filter: new OpenLayers.Filter.Comparison({
+							type: OpenLayers.Filter.Comparison.EQUAL_TO,
+							property: "type",
+							value: "c"
+						}),
+						symbolizer: {
+							fillColor: "#CCCC99"
+						}
+					});
+			
+			var ruleElse=new OpenLayers.Rule({
+						elseFilter: true,
+						symbolizer: {
+							fillColor: "#CCCC99"
+						}
+					});
+			
+			var styleChoser={
+				a:ruleA,
+				b:ruleB,
+				c:ruleC,
+				e:ruleElse,
+				getStyle:function(){
+					var result=[];
+					for(var i in this){
+						if(typeof(this[i]=="object")&&this[i]!=null){
+							if(i=="getStyle"){continue;}
+							result.push(this[i]);
+						}
+					}
+					return result;
+				}
+			}
+			
+			var mapStyle= new OpenLayers.StyleMap({
+										"default":new OpenLayers.Style(
+										{
+											pointRadius:6,
+											fillColor: "#ff9933",
+											strokeColor: "white",
+											strokeWidth: 2,
+
+										},
+										{
+											rules:styleChoser.getStyle()
+										}										
+										)
+								});
+						
+			
+			function add(){
+				var features=stationLayer.features;
+				var pjsonStr="[";
+				for(var i in features){
+					var feature=features[i];
+					
+					if(!feature.attributes["newadd"]){
+						continue;
+					}
+					
+					var point =feature.geometry;
+					pjsonStr=pjsonStr+"{lon:"+point.x+",lat:"+point.y+",type:'"+feature.attributes["type"]+"'},"
+				}
+				pjsonStr=pjsonStr.substring(0,pjsonStr.length-1)+"]";
+				$.get(
+					host+"demo/add",
+					{
+						points:pjsonStr
+					},
+					function(d){
+						alert("操作完成");
+					}
+				);
+			}
+			
+			function addStation(value){
+				clickControl.activate();
+				featureSle.deactivate();
+				addStationValue=value;
+			}
+			
+			function queryKey(){
+				var value=prompt( "输入关键字："); 
+				var protolcol=new OpenLayers.Protocol.WFS({
+					url:host+"geoserver/cite/ows",
+					featureType: "station",
+					featureNS: "http://www.opengeospatial.net/cite",
+					callback:function(d){
+						stationLayer.removeAllFeatures();
+						stationLayer.addFeatures(d.features);
+					},
+					 filter: new OpenLayers.Filter.Logical({
+						type: OpenLayers.Filter.Logical.OR,
+						filters: [
+							new OpenLayers.Filter.Comparison({
+								type: OpenLayers.Filter.Comparison.EQUAL_TO,
+								property: "type",
+								value: value
+							})
+						]
+					})
+				})
+				protolcol.read();
+			}
+			
+			function queryBuff(){
+				clickControl.deactivate();
+				featureSle.activate();
+			}
+		
+	</script>
+	<style>
+		#cot{
+		}
+		#cot input{
+		
+		}
+		#map{
+		}
+		
+		#op{
+		}
+	</style>
+  </head>
+  <body onload="init()">
+	<div>
+		<div id="cot" style="cot">
+			 <input id="A" checked="checked" type="checkbox">A</input> 
+			 <input id="B" checked="checked" type="checkbox">B</input> 
+			 <input id="C" checked="checked" type="checkbox">C</input> 
+		</div>
+		<div id="map" class="smallmap" style="width:824px;height:500px;margin:auto;"></div>	
+		<div id="op" style="">
+			<div id="add">
+				<button onclick=addStation("a")>增加站点A</button>
+				<button onclick=addStation("b")>增加站点B</button>
+				<button onclick=addStation("c")>增加站点C</button>
+				<button onclick=add()>提交站点数据</button>
+			</div>
+			</div id="query">
+				
+				<button onclick=queryKey()>关键字查询</button>
+				<button onclick=queryBuff()>站点周边查询</button>
+			</div>
+		</div>
+  </body>
+</html>
